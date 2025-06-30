@@ -115,4 +115,4 @@ if __name__ == '__main__':
         sys.exit(1)
     session = wallhaven_login(username, password)
     if session:
-        GetHtmlPack(session, 10, 'model')
+        GetHtmlPack(session, 11, 'model')
