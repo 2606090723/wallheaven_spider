@@ -21,6 +21,15 @@ def wallhaven_login(username, password):
     post_url = "https://wallhaven.cc/auth/login"
 
     session = requests.Session()
+    
+    # Optimize session for better performance
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=10,
+        pool_maxsize=20,
+        max_retries=3
+    )
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
 
     resp = session.get(login_url)
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -73,19 +82,26 @@ def downLoad(session, image_id, save_dir):
             if os.path.exists(filename):
                 print(f"{filename} 已存在，跳过下载")
                 return
+            
+            # Create more informative progress bar description
+            file_size_mb = total_size / (1024 * 1024) if total_size > 0 else 0
+            desc = f"📥 {image_id}.{ext} ({file_size_mb:.1f}MB)"
+            
             with open(filename, 'wb') as f, tqdm(
-                desc=image_id,
+                desc=desc,
                 total=total_size,
-                unit='iB',
+                unit='B',
                 unit_scale=True,
                 unit_divisor=1024,
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]',
             ) as bar:
-                for data in response.iter_content(chunk_size=8192):
-                    size = f.write(data)
-                    bar.update(size)
-            print(f"已成功下载: {filename}")
+                for data in response.iter_content(chunk_size=65536):  # Increased chunk size to 64KB
+                    if data:  # Only write non-empty chunks
+                        size = f.write(data)
+                        bar.update(size)
+            print(f"✅ 已成功下载: {os.path.basename(filename)}")
             return
-    print(f"图片 {image_id} 下载失败（jpg和png均尝试失败）")
+    print(f"❌ 图片 {image_id} 下载失败（jpg和png均尝试失败）")
 
 def GetHtmlPack(session, page, target):
     # search_url = f"https://wallhaven.cc/search?q={target}&categories=001&purity=100&sorting=relevance&order=desc&ai_art_filter=1&page={page}"
@@ -100,14 +116,23 @@ def GetHtmlPack(session, page, target):
     preview_links = soup.find_all("a", attrs={"class": "preview", "target": "_blank"})
 
     pattern = re.compile(r'https://wallhaven.cc/w/([0-9a-z]{6})')
-
+    
+    # Collect all image IDs first
+    image_ids = []
     for a_tag in preview_links:
         href = a_tag.get('href', '')
         match = pattern.search(href)
         if match:
-            image_id = match.group(1)
-            downLoad(session, image_id, save_dir=r"/Users/gmh/code/我的练习代码/壁纸爬取/壁纸文件")
-            time.sleep(1.2)
+            image_ids.append(match.group(1))
+    
+    print(f"🔍 找到 {len(image_ids)} 张图片，开始下载...")
+
+    for i, image_id in enumerate(image_ids, 1):
+        print(f"\n📄 [{i}/{len(image_ids)}] 准备下载图片: {image_id}")
+        downLoad(session, image_id, save_dir=r"/Users/gmh/code/我的练习代码/壁纸爬取/壁纸文件")
+        time.sleep(0.5)  # Reduced delay from 1.2s to 0.5s for faster overall processing
+    
+    print(f"🎉 批次下载完成！共处理 {len(image_ids)} 张图片")
 
 if __name__ == '__main__':
     if not username or not password:
